@@ -1,0 +1,50 @@
+## SDL显示部分
+- 代码中的SDL版本为1.2版本，需要做对应的SDL2的更新
+- 理解源代码SDL代码的步骤：
+    - SDL_init()
+        - 初始化SDL，初始化之后才可以使用SDL相关的API
+    - SDL_SetVideoMode()
+        - SDL1.2中的设置窗口的API，需要传入窗口的：宽、高、像素bit数、标志位
+    - SDL_ShowCursor(0)
+        - 隐藏光标
+    - SDL_WM_SetCaption(VERSION,VERSION)
+        - 设置窗口title
+    - SDL_NumJoysticks()
+        - 检测系统是否连接手柄：>0 则连接；<=0则未连接
+    - SDL_JoystickOpen(0)
+        - 打开设备ID为0的手柄，获取其手柄设备句柄
+    - SDL_JoystickEventState(SDL_ENABLE);
+        - 启用手柄事件，手柄操作会放入事件队列
+    - SDL_MapRGB()
+        - 转换64种24bit颜色像素成8bit颜色像素
+        - 后续PPU输出8bit像素时对应输出
+    - SDL_LockSurface()
+        - 锁定SDL的surface，锁定画面，打开像素
+    - SDL_UnlockSurface()
+        - 解锁SDL的surface，关闭像素可编辑
+    - SDL_Flip()
+        - 将修改的像素画面更新
+## 代码流程
+- system.cpp主函数代码对应的相关函数功能
+    - start_application(char *filename)
+        - 读取filename对应的nes游戏文件
+        - 从SRAM中读取有无相应进度存档
+    - InfoNES_Main()
+        - 整个NES模拟器的主函数
+    - InfoNES_Init()
+        - 初始化6502cpu，初始化PPU扫描线表
+    - InfoNES_Menu()
+        - 判断是否有退出事件触发
+    - InfoNES_DrawLine()
+        - 渲染一行的像素
+    - 行数的标志：
+        - SCAN_TOP_OFF_SCREEN：第0行
+        - SCAN_UNKNOWN_START：第240行，239行时表示画面已完整
+        - SCAN_VBLANK_START：第243行，进入VBlank，可以进行读取手柄等操作
+    - InfoNES_HSync()
+        - 渲染当前行，更新卷轴寄存器，扫描行指针
+        - 且根据行数标志执行相关的特殊行事件（画面完整输出、读取手柄等event）
+    - InfoNES_LoadFrame()
+        - 将PPU更新的画面像素更新到SDL中
+    - InfoNES_PadState()
+        - 检测事件触发（键盘按下、手柄操作）
