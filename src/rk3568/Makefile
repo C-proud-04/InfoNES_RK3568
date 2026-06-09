@@ -1,50 +1,48 @@
-CC = gcc
-TARBALL = InfoNES097J
+# 交叉编译器
+CROSS_COMPILE = aarch64-rockchip1031-linux-gnu-
+CC  = $(CROSS_COMPILE)gcc
+CXX = $(CROSS_COMPILE)g++
 
-# InfoNES
-.CFILES =	./../K6502.cpp \
-		./../InfoNES.cpp \
-		./../InfoNES_Mapper.cpp \
-		./../InfoNES_pAPU.cpp \
-		./InfoNES_System_SDL.cpp
+# SDL2 安装路径
+SDL_INSTALL_DIR = /home/alientek/czh/SDL-release-2.30.8/install
 
-.OFILES	=	$(.CFILES:.cpp=.o)
+TARGET = InfoNES
 
-#CCFLAGS = `gtk-config --cflags` -O6
-#CCFLAGS_NOOPT = `gtk-config --cflags` -O0
-#LDFLAGS = `gtk-config --libs gthread` -lstdc++		# gcc3.x.x
+# 源文件（mapper/*.cpp 由 InfoNES_Mapper.cpp 内部 #include，不需单独编译）
+CORE_DIR  = ..
 
-CCFLAGS = `sdl-config --cflags` -O3 -pipe
-CCFLAGS_NOOPT = -O0 -pipe
-LDFLAGS = `sdl-config --libs` -lstdc++			# gcc3.x.x
+CORE_SRCS = $(CORE_DIR)/K6502.cpp \
+            $(CORE_DIR)/InfoNES.cpp \
+            $(CORE_DIR)/InfoNES_Mapper.cpp \
+            $(CORE_DIR)/InfoNES_pAPU.cpp
 
-all: InfoNES
+PLATFORM_SRCS = InfoNES_System_RK.cpp
 
-InfoNES: $(.OFILES)
-	$(CC) $(INCLUDES) -o $@ $(.OFILES) $(LDFLAGS) -lm -lz
+SRCS = $(CORE_SRCS) $(PLATFORM_SRCS)
+OBJS = $(SRCS:.cpp=.o)
 
-# To avoid the gcc optimization bug
-./../InfoNES_pAPU.o: ./../InfoNES_pAPU.cpp
-	$(CC) $(INCLUDES) -c $(CCFLAGS_NOOPT) ./../InfoNES_pAPU.cpp -o ./../InfoNES_pAPU.o 
+# 编译选项
+INCLUDES = -I$(CORE_DIR) -I$(SDL_INSTALL_DIR)/include -I$(SDL_INSTALL_DIR)/include/SDL2
+CXXFLAGS = $(INCLUDES) -O3 -pipe
+CXXFLAGS_NOOPT = $(INCLUDES) -O0 -pipe
+LDFLAGS  = -L$(SDL_INSTALL_DIR)/lib -lSDL2 -lm -lpthread -lstdc++
 
-.cpp.o:
-	$(CC) $(INCLUDES) -c $(CCFLAGS) $*.cpp  -o $@
+.PHONY: all clean
+
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	$(CXX) -o $@ $(OBJS) $(LDFLAGS)
+
+# InfoNES_pAPU.cpp 用 -O0 避免 gcc 优化 bug
+$(CORE_DIR)/InfoNES_pAPU.o: $(CORE_DIR)/InfoNES_pAPU.cpp
+	$(CXX) $(CXXFLAGS_NOOPT) -c $< -o $@
+
+# 通用编译规则
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(.OFILES) ../*~ ../*/*~ core
-
-cleanall:
-	rm -f $(.OFILES) ../*~ ../*/*~ core InfoNES
-
-release: clean all
-
-tar:
-	( cd ..; \
-	tar cvf $(TARBALL).tar ./*; \
-	gzip $(TARBALL).tar \
-	)
-
-install:
-	install ./InfoNES /usr/local/bin
+	rm -f $(OBJS) $(TARGET)
 
 # End of Makefile

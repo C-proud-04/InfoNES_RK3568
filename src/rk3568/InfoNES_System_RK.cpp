@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <SDL.h>
+#include <SDL2/SDL.h>
 
 #include "../InfoNES.h"
 #include "../InfoNES_System.h"
@@ -38,8 +38,9 @@ static const char * VERSION = "InfoNES v0.97J RC1";
 bool quit = false;
 
 /* for video */
-SDL_Window *window;
-SDL_Surface *screen;
+SDL_Window   *window;
+SDL_Surface  *screen;
+SDL_Surface  *nesSurface;    // 256×240 RGB565 中间 surface
 
 /* For Sound Emulation */
 SDL_AudioSpec audio_spec;
@@ -116,12 +117,29 @@ int main(int argc, char **argv)
     fprintf(stderr, "SDL_Init() failed.\n");
     return 1;
   }
-  window = SDL_CreateWindow(VERSION, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-          NES_DISP_WIDTH+VBOX_SIZE, NES_DISP_HEIGHT+VBOX_SIZE, SDL_WINDOW_SHOWN);
+  // SDL创建窗口
+  // window = SDL_CreateWindow(VERSION,
+  //         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+  //         NES_DISP_WIDTH, NES_DISP_HEIGHT,
+  //         SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+  window = SDL_CreateWindow(VERSION,
+          SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+          NES_DISP_WIDTH, NES_DISP_HEIGHT,
+          SDL_WINDOW_SHOWN);
+  if (!window) {
+    fprintf(stderr, "SDL_CreateWindow() failed.\n");
+    return 1;
+  }
   screen = SDL_GetWindowSurface(window);
-  if(!screen)
-  {
+  if (!screen) {
     fprintf(stderr, "SDL_GetWindowSurface() failed.\n");
+    return 1;
+  }
+  // 创建与 WorkFrame 格式一致的 256×240 RGB565 surface
+  nesSurface = SDL_CreateRGBSurfaceWithFormat(0, NES_DISP_WIDTH, NES_DISP_HEIGHT,
+                  16, SDL_PIXELFORMAT_RGB565);
+  if (!nesSurface) {
+    fprintf(stderr, "SDL_CreateRGBSurfaceWithFormat() failed.\n");
     return 1;
   }
   // 隐藏光标
@@ -161,7 +179,8 @@ int main(int argc, char **argv)
   }
 	    
   /* Finalization of SDL*/
-  SDL_FreeSurface(screen);    
+  SDL_FreeSurface(nesSurface);
+  SDL_DestroyWindow(window);
   SDL_Quit();
 }
 
@@ -447,56 +466,15 @@ void InfoNES_ReleaseRom(){
 }
 
 /* Transfer the contents of work frame on the screen */
-void InfoNES_LoadFrame(){
-  // int	x, y;
-  // WORD *p,*pl;
-  // WORD *pw;	
+void InfoNES_LoadFrame()
+{
+  // WorkFrame (256×240 RGB565) → nesSurface (格式完全一致，直接 memcpy)
+  SDL_LockSurface(nesSurface);
+  memcpy(nesSurface->pixels, WorkFrame, NES_DISP_WIDTH * NES_DISP_HEIGHT * sizeof(WORD));
+  SDL_UnlockSurface(nesSurface);
 
-  // SDL_LockSurface(screen);
-  // pl=(WORD *)screen->pixels; pw = WorkFrame;
-  // for(y=0; y<NES_DISP_HEIGHT; y++){
-  //   p=pl;
-  //   for(x=0; x<NES_DISP_WIDTH; x++){  
-  //     *p++ = (WORD)*pw++;
-  //   }
-  //   pl+=screen->pitch; pw+=(0x100-NES_DISP_WIDTH);
-  // }
-  // SDL_UnlockSurface(screen);
-  // SDL_UpdateWindowSurface(window);
-  SDL_LockSurface(screen);
-  SDL_PixelFormat *fmt = screen->format;
-  
-  if (fmt->BytesPerPixel == 2) {
-      // 16-bit surface — 直接 memcpy，但要确认 mask 匹配
-      // RGB565: Rmask=0xF800 Gmask=0x07E0 Bmask=0x001F
-      Uint16 *dst = (Uint16 *)screen->pixels;
-      WORD *src = WorkFrame;
-      for (int y = 0; y < NES_DISP_HEIGHT; y++) {
-          memcpy(dst, src, NES_DISP_WIDTH * 2);
-          dst += screen->pitch / 2;
-          src += 256;
-      }
-  } 
-  else if (fmt->BytesPerPixel == 4) {
-      // 32-bit surface — 需要转换，但用 mask/shift 比 SDL_MapRGB 快
-      Uint32 *dst = (Uint32 *)screen->pixels;
-      WORD *src = WorkFrame;
-      for (int y = 0; y < NES_DISP_HEIGHT; y++) {
-          for (int x = 0; x < NES_DISP_WIDTH; x++) {
-              WORD c = src[x];
-              Uint8 r5 = (c >> 11) & 0x1F;
-              Uint8 g6 = (c >> 5)  & 0x3F;
-              Uint8 b5 =  c        & 0x1F;
-              // 用 mask/shift 直接拼装，比 SDL_MapRGB 快
-              dst[x] = ((r5 << 3) << fmt->Rshift)
-                      | ((g6 << 2) << fmt->Gshift)
-                      | ((b5 << 3) << fmt->Bshift);
-          }
-          dst += screen->pitch / 4;
-          src += 256;
-      }
-  }
-  SDL_UnlockSurface(screen);
+  // nessurface数据复制到screen
+  SDL_BlitScaled(nesSurface, NULL, screen, NULL);
   SDL_UpdateWindowSurface(window);
 }
 
